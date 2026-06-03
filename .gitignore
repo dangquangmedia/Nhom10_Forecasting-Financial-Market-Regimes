@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+data/raw/*.csv
+data/raw/*.parquet
+data/raw/*.xlsx
+data/*.csv
+data/processed/*.csv
+data/processed/*.parquet
+data/models/*.pkl
+data/models/*.joblib
+
+reports/*.csv
+reports/figures/*.png
