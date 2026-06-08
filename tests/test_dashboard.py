@@ -15,6 +15,9 @@ def test_load_dashboard_data_reads_required_tables():
         "confusion_matrix",
         "classification_report",
         "feature_importance",
+        "backtest_results",
+        "backtest_metrics",
+        "shap_data",
     }
     assert {"date", "y_true", "y_pred", "confidence", "prob_Sideways"}.issubset(
         data["predictions"].columns

@@ -136,6 +136,47 @@ def build_market_features(stock_features: pd.DataFrame) -> pd.DataFrame:
     vix = _vix_features(market[["date", "vix"]])
     market = market.drop(columns=["vix"]).merge(vix, on="date", how="left")
     market = market.merge(sector, on="date", how="left")
+
+    # Tích hợp dữ liệu vĩ mô FRED
+    from src.config import RAW_MACRO_PATH
+    if not RAW_MACRO_PATH.exists():
+        from src.macro_fetcher import fetch_macro_data
+        try:
+            macro_df = fetch_macro_data()
+        except Exception as exc:
+            raise FileNotFoundError(f"Tệp vĩ mô {RAW_MACRO_PATH} không tồn tại và không thể tự động tải từ FRED: {exc}")
+    else:
+        macro_df = pd.read_csv(RAW_MACRO_PATH)
+
+    macro_df["date"] = pd.to_datetime(macro_df["date"])
+    macro_df = macro_df.sort_values("date").reset_index(drop=True)
+
+    # Tính toán đặc trưng dẫn xuất vĩ mô
+    macro_df["yield_curve_spread_change_5"] = macro_df["yield_curve_spread"].diff(5).fillna(0.0)
+    macro_df["yield_curve_spread_change_20"] = macro_df["yield_curve_spread"].diff(20).fillna(0.0)
+    macro_df["fed_funds_rate_change_20"] = macro_df["fed_funds_rate"].diff(20).fillna(0.0)
+
+    gold_ret = macro_df["gold_price"].pct_change().fillna(0.0)
+    macro_df["gold_return_1"] = gold_ret
+    macro_df["gold_return_20"] = macro_df["gold_price"].pct_change(20).fillna(0.0)
+    macro_df["gold_volatility_20"] = gold_ret.rolling(window=20, min_periods=2).std().fillna(0.0)
+
+    brent_ret = macro_df["brent_oil_price"].pct_change().fillna(0.0)
+    macro_df["brent_return_1"] = brent_ret
+    macro_df["brent_return_20"] = macro_df["brent_oil_price"].pct_change(20).fillna(0.0)
+    macro_df["brent_volatility_20"] = brent_ret.rolling(window=20, min_periods=2).std().fillna(0.0)
+
+    # Loại bỏ giá tuyệt đối để tránh look-ahead/leakage về mặt xu hướng giá
+    macro_features = macro_df.drop(columns=["gold_price", "brent_oil_price"])
+
+    # Merge với market_features
+    market["date"] = pd.to_datetime(market["date"])
+    market = market.merge(macro_features, on="date", how="left")
+
+    # Điền khuyết các ngày cuối tuần hoặc ngày lễ nếu có lệch khớp
+    macro_cols = [col for col in macro_features.columns if col != "date"]
+    market[macro_cols] = market[macro_cols].ffill().bfill()
+
     market = market.sort_values("date").reset_index(drop=True)
     return market
 

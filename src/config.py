@@ -11,6 +11,8 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 RAW_OHLCV_PATH = RAW_DATA_DIR / "sp500_ohlcv.csv"
 RAW_SECTORS_PATH = RAW_DATA_DIR / "sp500_companies.csv"
 RAW_VIX_PATH = RAW_DATA_DIR / "vixcls.csv"
+RAW_MACRO_PATH = RAW_DATA_DIR / "macro_fred.csv"
+
 
 CLEAN_MARKET_INPUTS_PATH = PROCESSED_DATA_DIR / "sp500_clean.csv"
 STOCK_FEATURES_PATH = PROCESSED_DATA_DIR / "stock_features.csv"
@@ -21,6 +23,11 @@ XGBOOST_TEST_PREDICTIONS_PATH = REPORTS_DIR / "xgboost_test_predictions.csv"
 XGBOOST_CONFUSION_MATRIX_PATH = REPORTS_DIR / "xgboost_confusion_matrix.csv"
 XGBOOST_CLASSIFICATION_REPORT_PATH = REPORTS_DIR / "xgboost_classification_report.csv"
 XGBOOST_FEATURE_IMPORTANCE_PATH = REPORTS_DIR / "xgboost_feature_importance.csv"
+BACKTEST_RESULTS_PATH = REPORTS_DIR / "backtest_results.csv"
+BACKTEST_METRICS_PATH = REPORTS_DIR / "backtest_metrics.csv"
+XGBOOST_SHAP_DATA_PATH = REPORTS_DIR / "xgboost_shap_data.joblib"
+
+
 LOGISTIC_REGRESSION_MODEL_PATH = MODEL_DIR / "logistic_regression.joblib"
 RANDOM_FOREST_MODEL_PATH = MODEL_DIR / "random_forest.joblib"
 XGBOOST_MODEL_PATH = MODEL_DIR / "xgboost.joblib"

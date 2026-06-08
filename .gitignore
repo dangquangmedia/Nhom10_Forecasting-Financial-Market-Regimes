@@ -13,4 +13,5 @@ data/models/*.pkl
 data/models/*.joblib
 
 reports/*.csv
+reports/*.joblib
 reports/figures/*.png

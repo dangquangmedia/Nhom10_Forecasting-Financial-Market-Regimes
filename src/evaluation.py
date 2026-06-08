@@ -6,14 +6,7 @@ import joblib
 import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix
 
-from src.config import (
-    FINAL_DATASET_PATH,
-    XGBOOST_CLASSIFICATION_REPORT_PATH,
-    XGBOOST_CONFUSION_MATRIX_PATH,
-    XGBOOST_FEATURE_IMPORTANCE_PATH,
-    XGBOOST_MODEL_PATH,
-    XGBOOST_TEST_PREDICTIONS_PATH,
-)
+import src.config
 from src.data_loader import read_csv
 from src.modeling import make_time_splits
 
@@ -109,17 +102,56 @@ def build_xgboost_evaluation_artifacts(
 
 
 def export_xgboost_evaluation_artifacts(
-    dataset_path: Path = FINAL_DATASET_PATH,
-    model_path: Path = XGBOOST_MODEL_PATH,
+    dataset_path: Path | None = None,
+    model_path: Path | None = None,
 ) -> dict[str, pd.DataFrame]:
+    from src.backtest import run_regime_backtest
+    import shap
+
+    if dataset_path is None:
+        dataset_path = src.config.FINAL_DATASET_PATH
+    if model_path is None:
+        model_path = src.config.XGBOOST_MODEL_PATH
+
     dataset = read_csv(dataset_path)
     artifact = joblib.load(model_path)
     outputs = build_xgboost_evaluation_artifacts(dataset, artifact)
+
+    # Chạy kiểm thử chiến lược đầu tư vĩ mô
+    equity_curves, metrics_df = run_regime_backtest(outputs["predictions"], dataset)
+    outputs["backtest_results"] = equity_curves
+    outputs["backtest_metrics"] = metrics_df
+
+    # Tính toán trước SHAP values
+    model = artifact["model"]
+    encoder = artifact["label_encoder"]
+    imputer = artifact["imputer"]
+    splits = make_time_splits(dataset)
+    X_test_imputed = pd.DataFrame(
+        imputer.transform(splits.X_test),
+        columns=splits.feature_columns
+    )
+
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X_test_imputed)
+
+    # Lưu dữ liệu SHAP
+    shap_data = {
+        "shap_values": shap_values,
+        "X_test_imputed": X_test_imputed,
+        "classes": list(encoder.classes_)
+    }
+    src.config.XGBOOST_SHAP_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(shap_data, src.config.XGBOOST_SHAP_DATA_PATH)
+    print(f"Saved SHAP values to {src.config.XGBOOST_SHAP_DATA_PATH}")
+
     path_map = {
-        "predictions": XGBOOST_TEST_PREDICTIONS_PATH,
-        "confusion_matrix": XGBOOST_CONFUSION_MATRIX_PATH,
-        "classification_report": XGBOOST_CLASSIFICATION_REPORT_PATH,
-        "feature_importance": XGBOOST_FEATURE_IMPORTANCE_PATH,
+        "predictions": src.config.XGBOOST_TEST_PREDICTIONS_PATH,
+        "confusion_matrix": src.config.XGBOOST_CONFUSION_MATRIX_PATH,
+        "classification_report": src.config.XGBOOST_CLASSIFICATION_REPORT_PATH,
+        "feature_importance": src.config.XGBOOST_FEATURE_IMPORTANCE_PATH,
+        "backtest_results": src.config.BACKTEST_RESULTS_PATH,
+        "backtest_metrics": src.config.BACKTEST_METRICS_PATH,
     }
     for name, frame in outputs.items():
         path = path_map[name]

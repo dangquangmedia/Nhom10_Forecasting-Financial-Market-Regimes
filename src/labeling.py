@@ -156,7 +156,10 @@ def add_hmm_regime_labels(
     market_features: pd.DataFrame,
     n_states: int = 5,
     random_state: int = 42,
+    min_window: int = 252,
+    refit_stride: int = 5,
 ) -> pd.DataFrame:
+    import warnings
     required = {
         "date",
         "market_return_mean",
@@ -174,21 +177,91 @@ def add_hmm_regime_labels(
         raise ValueError(f"Market features are missing required columns for HMM labeling: {missing}")
 
     frame = _add_return_context(market_features)
-    n_components = min(n_states, len(frame))
+    n_rows = len(frame)
+    if n_rows == 0:
+        return frame
+
+    # Dynamically adjust min_window for small datasets (e.g. in tests)
+    actual_min_window = min(min_window, n_rows // 2)
+    if actual_min_window < 10:
+        actual_min_window = min(10, n_rows)
+
     features = frame[HMM_FEATURE_COLUMNS]
-    imputed = SimpleImputer(strategy="median").fit_transform(features)
-    scaled = StandardScaler().fit_transform(imputed)
-    model = GaussianHMM(
-        n_components=n_components,
-        covariance_type="full",
-        n_iter=500,
-        random_state=random_state,
-    )
-    model.fit(scaled)
-    frame["hmm_state"] = model.predict(scaled)
-    state_to_regime = _map_hmm_states_to_regimes(frame)
-    frame["hmm_state_regime"] = frame["hmm_state"].map(state_to_regime)
-    frame["regime_current"] = frame["hmm_state_regime"]
+    n_components = min(n_states, actual_min_window)
+
+    hmm_states = [0] * n_rows
+    hmm_state_regimes = ["Sideways"] * n_rows
+    regime_currents = ["Sideways"] * n_rows
+
+    # 1. Warm-up window: fit HMM on 0..actual_min_window
+    sub_features_init = features.iloc[:actual_min_window]
+    imputer_init = SimpleImputer(strategy="median")
+    scaler_init = StandardScaler()
+    scaled_init = scaler_init.fit_transform(imputer_init.fit_transform(sub_features_init))
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        model_init = GaussianHMM(
+            n_components=n_components,
+            covariance_type="full",
+            n_iter=150,
+            random_state=random_state,
+        )
+        model_init.fit(scaled_init)
+
+    states_init = model_init.predict(scaled_init)
+    sub_frame_init = frame.iloc[:actual_min_window].copy()
+    sub_frame_init["hmm_state"] = states_init
+    state_to_regime_init = _map_hmm_states_to_regimes(sub_frame_init)
+
+    for i in range(actual_min_window):
+        hmm_states[i] = int(states_init[i])
+        hmm_state_regimes[i] = state_to_regime_init.get(states_init[i], "Sideways")
+        regime_currents[i] = hmm_state_regimes[i]
+
+    active_model = model_init
+    active_imputer = imputer_init
+    active_scaler = scaler_init
+    active_state_to_regime = state_to_regime_init
+
+    # 2. Expanding window with refit stride
+    for t in range(actual_min_window, n_rows):
+        sub_features = features.iloc[:t+1]
+        is_refit_step = ((t - actual_min_window) % refit_stride == 0) or (t == actual_min_window)
+
+        if is_refit_step:
+            active_imputer = SimpleImputer(strategy="median")
+            active_scaler = StandardScaler()
+            imputed_sub = active_imputer.fit_transform(sub_features)
+            scaled_sub = active_scaler.fit_transform(imputed_sub)
+
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                active_model = GaussianHMM(
+                    n_components=n_components,
+                    covariance_type="full",
+                    n_iter=150,
+                    random_state=random_state,
+                )
+                active_model.fit(scaled_sub)
+
+            states_sub = active_model.predict(scaled_sub)
+            sub_frame = frame.iloc[:t+1].copy()
+            sub_frame["hmm_state"] = states_sub
+            active_state_to_regime = _map_hmm_states_to_regimes(sub_frame)
+        else:
+            imputed_sub = active_imputer.transform(sub_features)
+            scaled_sub = active_scaler.transform(imputed_sub)
+            states_sub = active_model.predict(scaled_sub)
+
+        last_state = int(states_sub[-1])
+        hmm_states[t] = last_state
+        hmm_state_regimes[t] = active_state_to_regime.get(last_state, "Sideways")
+        regime_currents[t] = hmm_state_regimes[t]
+
+    frame["hmm_state"] = hmm_states
+    frame["hmm_state_regime"] = hmm_state_regimes
+    frame["regime_current"] = regime_currents
     frame["regime_t_plus_1"] = frame["regime_current"].shift(-1)
     frame["regime_t_plus_5"] = frame["regime_current"].shift(-5)
     return frame
