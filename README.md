@@ -1,58 +1,33 @@
 # RegimeLens AI
+# SV Thực hiện :Lê Văn Quang    MSV:25410011
 
-RegimeLens AI is a financial market regime prediction dashboard for the S&P 500.
-The project uses real OHLCV stock data, company sector metadata, and FRED VIXCLS
-to build a daily market-level dataset for machine learning.
+RegimeLens AI là một dự án phân tích và dự báo regime thị trường tài chính cho chỉ số S&P 500. Project sử dụng dữ liệu OHLCV, thông tin ngành của công ty và chỉ số VIX từ FRED để xây dựng tập dữ liệu theo ngày phục vụ huấn luyện mô hình học máy.
 
-Primary model: **XGBoost**.
+Mô hình chính: XGBoost.
 
-Comparison models:
+Các mô hình so sánh:
 
 - Logistic Regression
 - Random Forest
-- XGBoost
 
-The dashboard and model outputs are for research and education only. They are not
-investment advice.
+Dashboard và kết quả mô hình chỉ dùng cho mục đích nghiên cứu và giáo dục, không phải lời khuyên đầu tư.
 
-## Day 1 Scope
+## Tổng quan hệ thống
 
-Day 1 prepares the project foundation:
+Project gồm 3 phần chính:
 
-- Project folder structure
-- Python dependencies
-- Raw data naming convention
-- Data cleaning pipeline
-- Merge pipeline for OHLCV + sectors + VIX
-- Unit tests for preprocessing behavior
+- Pipeline dữ liệu: thu thập, làm sạch, kết hợp và tạo đặc trưng từ dữ liệu thị trường.
+- Huấn luyện mô hình: sinh nhãn regime, xây dựng tập dữ liệu cuối cùng và train các mô hình phân loại.
+- Giao diện: dashboard cho xem kết quả dự báo, chỉ số đánh giá và giải thích mô hình.
 
-## Raw Data Files
+## Yêu cầu môi trường
 
-Download the datasets and place them in `data/raw/` with these names:
+- Python 3.10+
+- Node.js 18+ cho frontend React/Vite
 
-```text
-data/raw/sp500_ohlcv.csv
-data/raw/sp500_companies.csv
-data/raw/vixcls.csv
-```
+## Cài đặt local
 
-Expected minimum columns:
-
-```text
-sp500_ohlcv.csv:
-date, ticker or symbol, open, high, low, close, volume
-
-sp500_companies.csv:
-symbol or ticker, sector or gics_sector
-
-vixcls.csv:
-date or observation_date, vixcls or vix
-```
-
-The preprocessing code accepts common capitalization variants such as `Date`,
-`Symbol`, `Close`, and `VIXCLS`.
-
-## Setup
+### 1) Tạo môi trường Python
 
 ```bash
 python -m venv .venv
@@ -60,170 +35,101 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Run Day 1 Pipeline
+### 2) Chuẩn bị dữ liệu thô
 
-After placing the three raw CSV files in `data/raw/`, run:
+Đặt các file CSV vào thư mục data/raw/:
+
+```text
+data/raw/sp500_ohlcv.csv
+data/raw/sp500_companies.csv
+data/raw/vixcls.csv
+```
+
+Các file này cần có các cột tối thiểu như sau:
+
+```text
+sp500_ohlcv.csv: date, ticker hoặc symbol, open, high, low, close, volume
+sp500_companies.csv: symbol hoặc ticker, sector hoặc gics_sector
+vixcls.csv: date hoặc observation_date, vixcls hoặc vix
+```
+
+## Chạy pipeline dữ liệu
 
 ```bash
 python -m src.data_loader
-```
-
-Expected output:
-
-```text
-data/processed/sp500_clean.csv
-```
-
-This file contains cleaned and merged rows with:
-
-```text
-date, ticker, open, high, low, close, volume, sector, vix
-```
-
-## Run Tests
-
-```bash
-pytest -q
-```
-
-## Run Day 2 Feature Engineering
-
-After Day 1 creates `data/processed/sp500_clean.csv`, run:
-
-```bash
 python -m src.features
-```
-
-Expected outputs:
-
-```text
-data/processed/stock_features.csv
-data/processed/market_features.csv
-```
-
-`stock_features.csv` contains ticker-level technical features:
-
-- returns
-- log returns
-- rolling volatility
-- moving averages
-- RSI
-- MACD
-- drawdown
-
-`market_features.csv` contains one row per trading day for model training:
-
-- market return mean and median
-- market volatility mean
-- market breadth via advance and decline ratios
-- cross-sectional volatility
-- sector return columns
-- best/worst sector return
-- sector dispersion
-- positive sector count
-- VIX change, moving averages, and z-score
-
-## Next Steps
-
-Day 3 creates HMM-based regime labels:
-
-- Bull
-- Bear
-- Sideways
-- High Volatility
-- Recovery
-
-The main training target is `regime_t_plus_1` for next-day regime prediction
-with XGBoost as the primary model.
-
-Run:
-
-```bash
 python -m src.labeling
 ```
 
-Expected output:
+Các output chính:
 
 ```text
+data/processed/sp500_clean.csv
+data/processed/stock_features.csv
+data/processed/market_features.csv
 data/processed/final_dataset.csv
 ```
 
-The final dataset includes:
-
-```text
-regime_current
-regime_t_plus_1
-regime_t_plus_5
-hmm_state
-hmm_state_regime
-rolling_return_5
-rolling_return_20
-previous_20d_return
-```
-
-`regime_t_plus_1` is the main target for model training. `regime_t_plus_5` is
-kept for optional short-horizon comparison, but it is not the default training
-target.
-
-## Run Day 4 and Day 5 Model Training
-
-Run:
+## Huấn luyện mô hình
 
 ```bash
 python -m src.modeling
+python -m src.evaluation
 ```
 
-This trains:
-
-- Logistic Regression baseline
-- Random Forest baseline
-- XGBoost primary model
-
-Expected model artifacts:
+Các artifact chính:
 
 ```text
 data/models/logistic_regression.joblib
 data/models/random_forest.joblib
 data/models/xgboost.joblib
-```
-
-Expected metrics output:
-
-```text
 reports/model_results.csv
-```
-
-The split is chronological:
-
-```text
-Train + validation: 2021-06-01 to 2025-06-04
-Test: 2025-06-05 to 2026-02-19
-```
-
-Because the available VIX file starts at 2021-06-01, the final training dataset
-also starts at 2021-06-01. HMM hidden states are used to create labels, but
-`hmm_state` and `hmm_state_regime` are excluded from model features to avoid
-label leakage. The latest test window may be class-imbalanced, so `macro_f1`,
-`bear_recall`, and `high_volatility_recall` should be interpreted alongside the
-class distribution.
-
-## Export Day 5 XGBoost Evaluation Artifacts
-
-Run:
-
-```bash
-python -m src.evaluation
-```
-
-Expected outputs:
-
-```text
 reports/xgboost_test_predictions.csv
 reports/xgboost_confusion_matrix.csv
 reports/xgboost_classification_report.csv
 reports/xgboost_feature_importance.csv
 ```
 
-These files are dashboard-ready. The prediction file includes the true test
-label, predicted label, model confidence, and per-regime probabilities. The
-feature importance file is used to explain why XGBoost made its predictions.
+## Chạy tests
+
+```bash
+pytest -q
+```
+
+## Chạy dashboard và API local
+
+### Backend API
+
+```bash
+uvicorn app.server:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Dashboard Streamlit
+
+```bash
+streamlit run app/dashboard.py
+```
+
+### Frontend React
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+## Cấu trúc thư mục chính
+
+```text
+app/            # API FastAPI và dashboard Streamlit
+frontend/       # giao diện React + Vite
+src/            # pipeline dữ liệu, feature engineering, labeling, modeling
+data/           # dữ liệu thô, đã xử lý và model artifacts
+reports/        # kết quả đánh giá và báo cáo
+```
+
+## Ghi chú
+
+- Dự án đang dùng XGBoost như mô hình chính để dự báo regime tiếp theo.
+- Các tập dữ liệu và mô hình được lưu trong thư mục data/ và reports/ để có thể dùng trực tiếp cho dashboard.
+- Nếu muốn chạy frontend kết hợp với backend, cần đảm bảo API đang chạy ở cổng 8000 và frontend đã build hoặc chạy dev server.
